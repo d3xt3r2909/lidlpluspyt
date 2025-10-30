@@ -279,9 +279,9 @@ class LidlPlusApi:
 
     def activate_coupon_promotion_v1(self, promotion_id):
         """Activate single coupon by id API V1"""
-        url = f"{self._COUPONS_V1_API}/v1/promotions/{promotion_id}/activation"
+        url = f"{self._COUPONS_API}/v1/promotions/{promotion_id}/activation"
         kwargs = {"headers": {**self._default_headers(), "Country": self._country}, "timeout": self._TIMEOUT}
-        return requests.post(url, **kwargs)
+        return requests.post(url, **kwargs).text
 
     def coupons(self):
         """Get list of all coupons"""
@@ -292,9 +292,9 @@ class LidlPlusApi:
 
     def activate_coupon(self, coupon_id):
         """Activate single coupon by id"""
-        url = f"{self._COUPONS_API}/v1/{self._country}/{coupon_id}/activation"
-        kwargs = {"headers": self._default_headers(), "timeout": self._TIMEOUT}
-        return requests.post(url, **kwargs).json()
+        url = f"{self._COUPONS_API}/v1/promotions/{coupon_id}/activation"
+        kwargs = {"headers": {**self._default_headers(), "Country": self._country}, "timeout": self._TIMEOUT}
+        return requests.post(url, **kwargs).text
 
     def deactivate_coupon(self, coupon_id):
         """Deactivate single coupon by id"""
