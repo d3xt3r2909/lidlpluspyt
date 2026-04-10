@@ -50,7 +50,8 @@ class LidlPlusApi:
     _COUPONS_API = "https://coupons.lidlplus.com/app/api"
     _COUPONS_V1_API = "https://coupons.lidlplus.com/app/api/"
     _PROFILE_API = "https://profile.lidlplus.com/profile/api"
-    _APP = "com.lidl.eci.lidl.plus"
+    _APP = "com.lidl.eci.lidl.plus"   # used in API request headers
+    _REDIRECT_URI = "com.lidlplus.app"  # OAuth redirect scheme (original)
     _OS = "iOS"
     _APP_VERSION = "13.0.0"
     _TIMEOUT = 30
@@ -84,7 +85,7 @@ class LidlPlusApi:
             "client_id": client.client_id,
             "response_type": "code",
             "scope": ["openid profile offline_access lpprofile lpapis"],
-            "redirect_uri": f"{self._APP}://callback",
+            "redirect_uri": f"{self._REDIRECT_URI}://callback",
             **code_challenge,
         }
         auth_req = client.construct_AuthorizationRequest(request_args=args)
@@ -149,7 +150,7 @@ class LidlPlusApi:
         payload = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": f"{self._APP}://callback",
+            "redirect_uri": f"{self._REDIRECT_URI}://callback",
             "code_verifier": self._code_verifier,
         }
         return self._auth(payload)
