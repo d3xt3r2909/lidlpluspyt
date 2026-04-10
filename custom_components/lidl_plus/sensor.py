@@ -62,12 +62,25 @@ class LidlCouponsAvailableSensor(LidlBaseSensor):
     def extra_state_attributes(self) -> dict:
         if not self.coordinator.data:
             return {}
-        available = [
-            {"id": c["id"], "title": c.get("title", c.get("offerTitle", ""))}
-            for c in self.coordinator.data["coupons"]
-            if not c.get("isActivated")
-        ]
-        return {"coupons": available}
+        coupons = []
+        for c in self.coordinator.data["coupons"]:
+            coupons.append({
+                "id": c.get("id"),
+                "title": c.get("title") or c.get("offerTitle", ""),
+                "description": c.get("shortDescription") or c.get("description", ""),
+                "discount": c.get("promotionDescription") or c.get("discountText", ""),
+                "image": (
+                    c.get("imageUrl")
+                    or c.get("image")
+                    or (c.get("images") or [{}])[0].get("url", "")
+                ),
+                "valid_until": c.get("endDate") or c.get("validUntil", ""),
+                "activated": c.get("isActivated", False),
+            })
+        return {
+            "coupons": [c for c in coupons if not c["activated"]],
+            "coupons_activated": [c for c in coupons if c["activated"]],
+        }
 
 
 class LidlCouponsActivatedSensor(LidlBaseSensor):
