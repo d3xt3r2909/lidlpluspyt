@@ -1,231 +1,163 @@
-**This python package is unofficial and is not related in any way to Lidl. It was developed by reversed engineered requests and can stop working at anytime!**
+**This python package is unofficial and is not related in any way to Lidl or Payback. It was developed by reversed engineered requests and can stop working at anytime!**
 
 > [!IMPORTANT]
-> Auth and ticket download are working as of August 2025. This fork fixes errors after Lidl's API changes.
-> Many changes are based upon other user's reports on @Andre0512's repo, as well as my own research
+> Auth and ticket download are working as of April 2026. This fork fixes errors after Lidl's API changes.
 
+---
 
-# Python Lidl Plus API
+# Lidl Plus + Payback — Home Automation
 
-Fetch receipts, activate cupons and more. Useful to analyse spending patterns, find the date of a specific lost ticket (think of warranties!), etc
-## Installation
-> [!IMPORTANT]
-> The version on PyPi is currently broken. To run, clone or download the repo directly, and install the requirements with "pip install -r requirements.txt"
+This repo contains two tools:
+
+1. **Lidl Plus** — Python API + Home Assistant custom component (coupons, receipts, token refresh)
+2. **Payback** — Browser automation to activate all coupons headlessly
+
+---
+
+## Lidl Plus
+
+### Home Assistant Integration
+
+A custom HA component is included in `custom_components/lidl_plus/`. Install via HACS or copy the folder directly into your HA `custom_components/` directory.
+
+Features:
+- Coupon sensors (count, list, images)
+- Receipt sensors
+- Refresh token renewal from the HA UI
+- Service call to activate all coupons
+
+### Quick Auth (`lidl-auth.sh`)
+
+One-command authentication that obtains a refresh token and optionally pushes it to Home Assistant.
+
+**Setup** — copy `.env.example` to `.env` and fill in:
+```env
+LIDL_EMAIL=your@email.com
+LIDL_PASSWORD=yourpassword
+LIDL_REFRESH_TOKEN=          # filled automatically after first login
+
+HA_URL=http://192.168.1.x:8123
+HA_TOKEN=your_long_lived_ha_token
+```
+
+**Usage:**
+```bash
+# Browser login (recommended first time or when token expires)
+./lidl-auth.sh --debug
+
+# Headless login using saved token
+./lidl-auth.sh
+
+# Override credentials
+./lidl-auth.sh -u other@email.com -p password --debug
+```
+
+| Option | Description |
+|---|---|
+| `--debug` | Opens Firefox for manual login |
+| `-u`, `--user` | Override email from `.env` |
+| `-p`, `--password` | Override password from `.env` |
+
+> [!TIP]
+> When using `--debug`, Firefox opens and shows the Lidl login form. Fill in your credentials and click **Anmelden**. If a rate-limit page appears ("Die Kapazität wurde überschritten"), re-enter your password and click Anmelden again. The refresh token is captured automatically and saved to `.env`.
+
+### Python API
 
 ```bash
 pip install lidl-plus
 ```
 
-## Authentication
-To login in Lidl Plus we need to simulate the app login.
-This is a bit complicated, we need a web browser and some additional python packages.
-After we have received the token once, we can use it for further requestes and we don't need a browser anymore.
-
-#### Prerequisites
-* Check you have installed one of the supported web browser
-  - Chromium
-  - Google Chrome
-  - Mozilla Firefox [tested August 2025, working]
-  - Microsoft Edge
-* Install additional python packages
-  ```bash
-  pip install "lidl-plus[auth]"
-  ```
-#### Commandline-Tool
-```bash
-$ lidl-plus auth
-Enter your language (de, en, ...): de
-Enter your country (DE, AT, ...): AT
-Enter your lidl plus username (phone number): +4915784632296
-Enter your lidl plus password:
-Enter the verify code you received via phone: 590287
-------------------------- refresh token ------------------------
-2D4FC2A699AC703CAB8D017012658234917651203746021A4AA3F735C8A53B7F
-----------------------------------------------------------------
-```
-
-#### Python
-```python
-from lidlplus import LidlPlusApi
-
-lidl = LidlPlusApi(language="de", country="AT")
-lidl.login(phone="+4915784632296", password="password", verify_token_func=lambda: input("Insert code: "))
-print(lidl.refresh_token)
-```
-## Usage
-Currently, the only features are fetching receipts and activating coupons
-### Receipts
-
-Get your receipts as json and receive a list of bought items like:
-```json
-{
-    "currentUnitPrice": "2,19",
-    "quantity": "1",
-    "isWeight": false,
-    "originalAmount": "2,19",
-    "name": "Vegane Frikadellen",
-    "taxGroup": "1",
-    "taxGroupName": "A",
-    "codeInput": "4023456245134",
-    "discounts": [
-        {
-            "description": "5€ Coupon",
-            "amount": "0,21"
-        }
-    ],
-    "deposit": null,
-    "giftSerialNumber": null
-},
-```
-
-#### Commandline-Tool
 > [!IMPORTANT]
-> Now it's no longer required to specify the "--all" flag, it will always ask and will automatically save them. 
-```bash
-$ lidl-plus --language=de --country=AT --refresh-token=XXXXX receipt
-```
+> The PyPi version may be outdated. Clone this repo and install with `pip install -r requirements.txt` for the latest fixes.
 
-#### Python
+**Receipts:**
 ```python
 from lidlplus import LidlPlusApi
 
-lidl = LidlPlusApi("de", "AT", refresh_token="XXXXXXXXXX")
+lidl = LidlPlusApi("de", "DE", refresh_token="YOUR_TOKEN")
 for receipt in lidl.tickets():
     pprint(lidl.ticket(receipt["id"]))
 ```
 
-### Coupons
-
-You can list all coupons and activate/deactivate them by id
-```json
-{
-    "sections": [
-        {
-            "name": "FavoriteStore",
-            "coupons": []
-        },
-        {
-            "name": "AllStores",
-            "coupons": [
-                {
-                    "id": "2c9b3554-a09c-412c-8be4-d41cbff13572",
-                    "image": "https://lidlplusprod.blob.core.windows.net/images/coupons/LT/IDISC0000254911.png?t=1695452076",
-                    "type": "Standard",
-                    "offerTitle": "1 + 1",
-                    "title": "👨🏻‍🍳 Frozen 👨🏻‍🍳",
-                    "offerDescriptionShort": "FREE",
-                    "isSegmented": false,
-                    "startValidityDate": "2023-09-24T21:00:00Z",
-                    "endValidityDate": "2023-10-01T20:59:59Z",
-                    "isActivated": false,
-                    "apologizeText": "Xxxxxxxxxxxxxxxxx",
-                    "apologizeStatus": false,
-                    "apologizeTitle": "Xxxxxxxxxxxxxxxxxxx",
-                    "promotionId": "DISC0000254911",
-                    "tagSpecial": "",
-                    "firstColor": "#ffc700",
-                    "secondaryColor": null,
-                    "firstFontColor": "#4a4a4a",
-                    "secondaryFontColor": null,
-                    "isSpecial": false,
-                    "hasAsterisk": false,
-                    "isHappyHour": false,
-                    "stores": []
-                },
-                .......
-            ]
-        },
-        {
-            "name": "OtherStores",
-            "coupons": []
-        }
-    ]
-}
-```
-
-#### Commandline-Tool
-
-Activate all available coupons
-
-```bash
-$ lidl-plus --language=de --country=AT --refresh-token=XXXXX coupon --all
-```
-
-#### Python
+**Coupons:**
 ```python
-from lidlplus import LidlPlusApi
-
-lidl = LidlPlusApi("de", "AT", refresh_token="XXXXXXXXXX")
+lidl = LidlPlusApi("de", "DE", refresh_token="YOUR_TOKEN")
 for section in lidl.coupons()["sections"]:
-  for coupon in section["coupons"]:
-    print("found coupon: ", coupon["title"], coupon["id"])
+    for coupon in section["coupons"]:
+        print(coupon["title"], coupon["id"])
 ```
 
-## Quick Auth Script (`lidl-auth.sh`)
-
-A convenience wrapper script that handles authentication automatically.
-
-#### Setup
-
-Copy `.env.example` to `.env` and fill in your credentials:
+**CLI:**
 ```bash
-cp .env.example .env
-```
-```env
-LIDL_EMAIL=your@email.com
-LIDL_PASSWORD=yourpassword
-LIDL_REFRESH_TOKEN=        # filled automatically after first login
+# Activate all coupons
+lidl-plus --language=de --country=DE --refresh-token=XXXXX coupon --all
+
+# Download receipts
+lidl-plus --language=de --country=DE --refresh-token=XXXXX receipt
 ```
 
-#### Usage
+---
+
+## Payback
+
+Browser automation (Selenium + Firefox) to activate all Payback.de coupons with a single command.
+
+> No official API exists. This uses cookie-based session persistence to avoid reCAPTCHA.
+
+### Setup
 
 ```bash
-# Use saved refresh token — instant, no browser needed
-./lidl-auth.sh
+# Install dependencies (requires venv already set up for Lidl)
+pip install selenium-wire
 
-# Open browser for manual login (use when token expires or first time)
-./lidl-auth.sh --debug
-
-# Login as a different user (overrides .env values)
-./lidl-auth.sh -u other@email.com -p theirpassword --debug
-
-# Login as a different user headlessly
-./lidl-auth.sh -u other@email.com -p theirpassword
+# Add credentials to .env
+PAYBACK_EMAIL=your@email.com
+PAYBACK_PASSWORD=yourpassword
 ```
 
-| Option | Description |
-|---|---|
-| `--debug` | Opens Firefox for manual login (recommended to bypass bot detection) |
-| `-u`, `--user` | Override email from `.env` |
-| `-p`, `--password` | Override password from `.env` |
+### Usage
 
-> [!TIP]
-> When using `--debug`, Firefox opens and shows the login form. Fill in your email and password and click **Anmelden**. If a rate-limit page appears ("Die Kapazität wurde überschritten"), just re-enter your password and click Anmelden again. The script captures the token automatically.
->
-> Once you have a refresh token, paste it into `.env` as `LIDL_REFRESH_TOKEN` and future runs will be instant with no browser.
+**First time (or when session expires):**
+```bash
+./payback/payback.sh --login
+```
+Firefox opens visibly. Log in manually. Cookies are saved to `payback/cookies.json` and reused for all future headless runs.
 
-## Help
-#### Commandline-Tool
-```commandline
-Lidl Plus API
-
-options:
-  -h, --help                show this help message and exit
-  -c CC, --country CC       country (DE, BE, NL, AT, ...)
-  -l LANG, --language LANG  language (de, en, fr, it, ...)
-  -u USER, --user USER      Lidl Plus login username
-  -p XXX, --password XXX    Lidl Plus login password
-  --2fa {phone,email}       choose two factor auth method
-  -r TOKEN, --refresh-token TOKEN
-                            refresh token to authenticate
-  --skip-verify             skip ssl verification
-  --not-accept-legal-terms  not auto accept legal terms updates
-  -d, --debug               debug mode
-
-commands:
-  auth                      authenticate and get token
-  receipt                   output last receipts as json
-  coupon                    activate coupons
+**Activate all coupons (headless):**
+```bash
+./payback/payback.sh
 ```
 
+Example output:
+```
+==================================================
+PAYBACK COUPON ACTIVATION RESULTS
+==================================================
+  Activated : 257
+  Skipped   : 0  (already active)
+  Failed    : 0
+==================================================
+```
 
+**When cookies expire** (every few weeks), just run `--login` again.
+
+### Cookie file
+
+`payback/cookies.json` is git-ignored and never committed.
+
+---
+
+## Repository Structure
+
+```
+lidl-plus/
+├── custom_components/lidl_plus/   HA custom component
+├── payback/
+│   ├── activate.py                headless coupon activation
+│   ├── trigger_server.py          HTTP trigger server (optional Pi setup)
+│   ├── payback.sh                 shell wrapper
+│   └── cookies.json               saved session (git-ignored)
+├── lidl-auth.sh                   Lidl auth wrapper
+├── .env                           credentials (git-ignored)
+└── .env.example                   template
+```
