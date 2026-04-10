@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lidl Plus",
+        "description": "Enter your Lidl Plus credentials. Get a refresh token by running `./lidl-plus.sh auth --debug` on your computer.",
+        "data": {
+          "language": "Language (e.g. de, en, nl)",
+          "country": "Country (e.g. DE, AT, NL)",
+          "refresh_token": "Refresh Token"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid refresh token. Run `./lidl-plus.sh auth --debug` to get a new one.",
+      "cannot_connect": "Cannot connect to Lidl Plus API. Check your internet connection."
+    },
+    "abort": {
+      "already_configured": "This Lidl Plus account is already configured."
+    }
+  },
+  "services": {
+    "activate_all_coupons": {
+      "name": "Activate All Coupons",
+      "description": "Activates all available Lidl Plus coupons."
+    }
+  }
+}

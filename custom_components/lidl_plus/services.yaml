@@ -1,0 +1,4 @@
+activate_all_coupons:
+  name: Activate All Coupons
+  description: Activates all available Lidl Plus coupons for the configured account.
+  fields: {}

@@ -3,6 +3,8 @@ __pycache__/
 dist/
 venv/
 *.json
+!hacs.json
+!custom_components/**/*.json
 *.log
 **/*.egg-info/
 test.py
