@@ -50,8 +50,9 @@ class LidlPlusApi:
     _COUPONS_API = "https://coupons.lidlplus.com/app/api"
     _COUPONS_V1_API = "https://coupons.lidlplus.com/app/api/"
     _PROFILE_API = "https://profile.lidlplus.com/profile/api"
-    _APP = "com.lidlplus.app"
-    _OS = "iOs"
+    _APP = "com.lidl.eci.lidl.plus"
+    _OS = "iOS"
+    _APP_VERSION = "13.0.0"
     _TIMEOUT = 30
 
     def __init__(self, language, country, refresh_token=""):
@@ -367,10 +368,11 @@ class LidlPlusApi:
             raise MissingLogin("You need to login!")
         return {
             "Authorization": f"Bearer {self._token}",
-            "App-Version": "999.99.9",
+            "App-Version": self._APP_VERSION,
             "Operating-System": self._OS,
-            "App": "com.lidl.eci.lidl.plus",
-            "Accept-Language": self._language,
+            "App": self._APP,
+            "Accept-Language": f"{self._language}-{self._country}",
+            "User-Agent": f"LidlPlus/{self._APP_VERSION} (iPhone; {self._OS} 17.0; Scale/3.00)",
         }
 
     def tickets(self, only_favorite=False):
