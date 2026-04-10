@@ -27,8 +27,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         valid = await hass.async_add_executor_job(client.validate)
         if not valid:
-            raise ConfigEntryNotReady("Lidl Plus refresh token is invalid or expired.")
+            entry.async_start_reauth(hass)
+            raise ConfigEntryNotReady("Lidl Plus token is invalid — re-authentication required.")
     except LidlAuthError as exc:
+        entry.async_start_reauth(hass)
         raise ConfigEntryNotReady(str(exc)) from exc
 
     coordinator = LidlPlusCoordinator(hass, entry, client)

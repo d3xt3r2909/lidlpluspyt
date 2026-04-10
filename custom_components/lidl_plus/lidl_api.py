@@ -5,9 +5,11 @@ import base64
 import hashlib
 import os
 import re
+import secrets
 from datetime import datetime, timedelta
 
 import requests
+from requests import Session
 
 _AUTH_API = "https://accounts.lidl.com"
 _TICKET_API = "https://tickets.lidlplus.com/api/v2"
@@ -21,6 +23,123 @@ _TIMEOUT = 30
 
 class LidlAuthError(Exception):
     """Raised when authentication fails (expired/invalid refresh token)."""
+
+
+# ---------------------------------------------------------------------------
+# Standalone headless login (no browser needed)
+# ---------------------------------------------------------------------------
+
+def _pkce_pair() -> tuple[str, str]:
+    verifier = base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=").decode()
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()
+    ).rstrip(b"=").decode()
+    return verifier, challenge
+
+
+def _exchange_code(code: str, verifier: str) -> str:
+    """Exchange an OAuth auth code + PKCE verifier for a refresh token."""
+    secret = base64.b64encode(f"{_CLIENT_ID}:secret".encode()).decode()
+    resp = requests.post(
+        f"{_AUTH_API}/connect/token",
+        headers={
+            "Authorization": f"Basic {secret}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": f"{_APP}://callback",
+            "code_verifier": verifier,
+        },
+        timeout=_TIMEOUT,
+    )
+    data = resp.json()
+    if "refresh_token" not in data:
+        raise LidlAuthError(f"Code exchange failed: {data.get('error', data)}")
+    return data["refresh_token"]
+
+
+def login_with_credentials(language: str, country: str, email: str, password: str) -> str:
+    """
+    Attempt a headless (no browser) PKCE login with Lidl credentials.
+
+    Returns the refresh token on success.
+    Raises LidlAuthError if Lidl enforces CAPTCHA or login fails.
+    """
+    language = language.lower()
+    country = country.upper()
+    verifier, challenge = _pkce_pair()
+
+    session = Session()
+    session.headers.update({
+        "User-Agent": f"LidlPlus/{_APP_VERSION} (iPhone; {_OS} 17.0; Scale/3.00)",
+        "Accept-Language": f"{language}-{country}",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    })
+
+    # Step 1: GET /connect/authorize → follows redirect to login page
+    params = {
+        "client_id": _CLIENT_ID,
+        "response_type": "code",
+        "scope": "openid profile offline_access lpprofile lpapis",
+        "redirect_uri": f"{_APP}://callback",
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "Country": country,
+        "language": f"{language}-{country}",
+    }
+    r = session.get(
+        f"{_AUTH_API}/connect/authorize",
+        params=params,
+        allow_redirects=True,
+        timeout=_TIMEOUT,
+    )
+
+    # Step 2: Extract CSRF token from the login page HTML
+    csrf_match = re.search(
+        r'name="__RequestVerificationToken"[^>]*value="([^"]+)"', r.text
+    )
+    if not csrf_match:
+        raise LidlAuthError(
+            "Could not extract CSRF token — Lidl may be enforcing CAPTCHA"
+        )
+    csrf_token = csrf_match.group(1)
+    login_url = r.url  # the actual login page URL after redirects
+
+    # Step 3: POST credentials (mimicking the SPA's form submission)
+    r = session.post(
+        login_url,
+        data={
+            "Email": email,
+            "Password": password,
+            "__RequestVerificationToken": csrf_token,
+            "RememberMe": "false",
+            "CountryCode": country,
+        },
+        allow_redirects=False,
+        timeout=_TIMEOUT,
+    )
+
+    # Step 4: Follow the redirect chain until we find the auth code
+    for _ in range(10):
+        location = r.headers.get("Location", "")
+        code_match = re.search(r"[?&]code=([0-9A-Za-z_-]+)", location)
+        if code_match:
+            return _exchange_code(code_match.group(1), verifier)
+        if not location:
+            break
+        next_url = (
+            location
+            if location.startswith("http")
+            else f"{_AUTH_API}{location}"
+        )
+        r = session.get(next_url, allow_redirects=False, timeout=_TIMEOUT)
+
+    raise LidlAuthError(
+        "Login failed — no auth code in redirect chain. "
+        "Lidl may require CAPTCHA verification for this login."
+    )
 
 
 class LidlApiClient:

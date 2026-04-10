@@ -3,6 +3,8 @@ DOMAIN = "lidl_plus"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_LANGUAGE = "language"
 CONF_COUNTRY = "country"
+CONF_EMAIL = "email"
+CONF_PASSWORD = "password"
 
 DEFAULT_UPDATE_INTERVAL_HOURS = 24
 CONF_UPDATE_INTERVAL = "update_interval_hours"

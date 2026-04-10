@@ -1,41 +1,64 @@
 {
-  "options": {
-    "step": {
-      "init": {
-        "title": "Lidl Plus Options",
-        "description": "Coupon activation day: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun, 7=Every day",
-        "data": {
-          "update_interval_hours": "Data refresh interval (hours, 1–168)",
-          "activation_day": "Coupon activation day (0=Mon … 6=Sun, 7=Every day)",
-          "activation_hour": "Coupon activation hour (0–23)"
-        }
-      }
-    }
-  },
   "config": {
     "step": {
       "user": {
-        "title": "Lidl Plus",
-        "description": "Enter your Lidl Plus credentials. Get a refresh token by running `./lidl-plus.sh auth --debug` on your computer.",
+        "title": "Lidl Plus Setup",
+        "description": "Choose how to connect your Lidl Plus account.",
         "data": {
-          "language": "Language (e.g. de, en, nl)",
-          "country": "Country (e.g. DE, AT, NL)",
-          "refresh_token": "Refresh Token"
+          "method": "Setup method",
+          "language": "Language code (e.g. de)",
+          "country": "Country code (e.g. DE)"
+        }
+      },
+      "credentials": {
+        "title": "Lidl Plus – Email & Password",
+        "description": "Enter your Lidl Plus credentials. HA will log in automatically and renew tokens in the background. Note: {note}",
+        "data": {
+          "email": "Email address",
+          "password": "Password"
+        }
+      },
+      "token": {
+        "title": "Lidl Plus – Refresh Token",
+        "description": "Paste a refresh token obtained from the lidl-auth script.",
+        "data": {
+          "refresh_token": "Refresh token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Lidl Plus – Re-authentication required",
+        "description": "{method}",
+        "data": {
+          "refresh_token": "New refresh token (optional)"
         }
       }
     },
     "error": {
-      "invalid_auth": "Invalid refresh token. Run `./lidl-plus.sh auth --debug` to get a new one.",
-      "cannot_connect": "Cannot connect to Lidl Plus API. Check your internet connection."
+      "invalid_auth": "Invalid or expired token / wrong credentials.",
+      "cannot_connect": "Cannot connect to Lidl Plus servers.",
+      "captcha_required": "Lidl requires CAPTCHA — please paste a manually obtained refresh token instead."
     },
     "abort": {
-      "already_configured": "This Lidl Plus account is already configured."
+      "already_configured": "Lidl Plus is already configured.",
+      "reauth_successful": "Re-authentication successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Lidl Plus Options",
+        "data": {
+          "update_interval_hours": "Data refresh interval (hours)",
+          "activation_day": "Coupon activation day (0=Mon … 6=Sun, 7=Every day)",
+          "activation_hour": "Coupon activation hour (0-23)"
+        }
+      }
     }
   },
   "services": {
     "activate_all_coupons": {
-      "name": "Activate All Coupons",
-      "description": "Activates all available Lidl Plus coupons."
+      "name": "Activate all coupons",
+      "description": "Activates all available Lidl Plus coupons immediately."
     }
   }
 }
