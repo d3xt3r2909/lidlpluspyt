@@ -48,6 +48,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(DOMAIN, "activate_all_coupons", handle_activate_all_coupons)
 
+    # Register service: lidl_plus.set_refresh_token
+    async def handle_set_refresh_token(call: ServiceCall) -> None:
+        new_token = call.data.get("refresh_token", "").strip()
+        if not new_token:
+            _LOGGER.error("lidl_plus.set_refresh_token: no token provided")
+            return
+        client._refresh_token = new_token
+        client._access_token = ""  # force re-auth on next API call
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_REFRESH_TOKEN: new_token}
+        )
+        _LOGGER.info("Lidl Plus refresh token updated via service call")
+        await coordinator.async_request_refresh()
+
+    hass.services.async_register(DOMAIN, "set_refresh_token", handle_set_refresh_token)
+
     return True
 
 
@@ -60,4 +76,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id)
         hass.services.async_remove(DOMAIN, "activate_all_coupons")
+        hass.services.async_remove(DOMAIN, "set_refresh_token")
     return unloaded

@@ -15,7 +15,8 @@ _AUTH_API = "https://accounts.lidl.com"
 _TICKET_API = "https://tickets.lidlplus.com/api/v2"
 _COUPONS_API = "https://coupons.lidlplus.com/app/api"
 _CLIENT_ID = "LidlPlusNativeClient"
-_APP = "com.lidl.eci.lidl.plus"
+_APP = "com.lidl.eci.lidl.plus"          # used in API request headers
+_REDIRECT_URI = "com.lidlplus.app"        # original OAuth redirect scheme
 _OS = "iOS"
 _APP_VERSION = "13.0.0"
 _TIMEOUT = 30
@@ -51,7 +52,7 @@ def build_auth_url(language: str, country: str) -> tuple[str, str]:
         f"client_id={_CLIENT_ID}"
         f"&response_type=code"
         f"&scope=openid%20profile%20offline_access%20lpprofile%20lpapis"
-        f"&redirect_uri={_APP}%3A%2F%2Fcallback"
+        f"&redirect_uri={_REDIRECT_URI}%3A%2F%2Fcallback"
         f"&code_challenge={challenge}"
         f"&code_challenge_method=S256"
         f"&Country={country}"
@@ -93,7 +94,7 @@ def _exchange_code(code: str, verifier: str) -> str:
         data={
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": f"{_APP}://callback",
+            "redirect_uri": f"{_REDIRECT_URI}://callback",
             "code_verifier": verifier,
         },
         timeout=_TIMEOUT,
@@ -127,7 +128,7 @@ def login_with_credentials(language: str, country: str, email: str, password: st
         "client_id": _CLIENT_ID,
         "response_type": "code",
         "scope": "openid profile offline_access lpprofile lpapis",
-        "redirect_uri": f"{_APP}://callback",
+        "redirect_uri": f"{_REDIRECT_URI}://callback",
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         "Country": country,
