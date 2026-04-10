@@ -45,6 +45,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         results = await hass.async_add_executor_job(client.activate_all_coupons)
         _LOGGER.info("Lidl Plus coupons activated: %s", results)
         await coordinator.async_request_refresh()
+        hass.components.persistent_notification.async_create(
+            f"✅ Activated: {results.get('activated', 0)} "
+            f"· Skipped: {results.get('skipped', 0)} "
+            f"· Failed: {results.get('failed', 0)}",
+            title="Lidl Plus Coupons",
+            notification_id="lidl_plus_activation",
+        )
 
     hass.services.async_register(DOMAIN, "activate_all_coupons", handle_activate_all_coupons)
 
