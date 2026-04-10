@@ -1,0 +1,14 @@
+[Unit]
+Description=Payback coupon activation trigger server
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/lidl-plus
+ExecStart=/home/pi/lidl-plus/venv/bin/python3 /home/pi/lidl-plus/payback/trigger_server.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

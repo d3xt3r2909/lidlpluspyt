@@ -18,6 +18,7 @@ import os
 import sys
 import time
 
+
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
@@ -32,6 +33,32 @@ try:
     from selenium.webdriver.support.ui import WebDriverWait
 except ImportError:
     sys.exit("Missing dependency: pip install selenium-wire")
+
+def _notify_ha(activated: int, failed: int):
+    """Post activation result to Home Assistant as a persistent notification."""
+    import urllib.request
+    ha_url = os.environ.get("HA_URL", "").rstrip("/")
+    ha_token = os.environ.get("HA_TOKEN", "")
+    if not ha_url or not ha_token:
+        return
+    icon = "mdi:check-circle" if failed == 0 else "mdi:alert-circle"
+    msg = f"✅ {activated} coupons activated" if failed == 0 else f"⚠️ {activated} activated, {failed} failed"
+    payload = json.dumps({
+        "message": msg,
+        "title": "Payback Coupons",
+        "notification_id": "payback_activation",
+    }).encode()
+    req = urllib.request.Request(
+        f"{ha_url}/api/services/persistent_notification/create",
+        data=payload,
+        headers={"Authorization": f"Bearer {ha_token}", "Content-Type": "application/json"},
+    )
+    try:
+        urllib.request.urlopen(req, timeout=10)
+        log.info("Notified Home Assistant")
+    except Exception as e:
+        log.warning(f"Could not notify Home Assistant: {e}")
+
 
 BASE_URL = "https://www.payback.de"
 LOGIN_URL = f"{BASE_URL}/login"
@@ -247,15 +274,20 @@ def main():
 
         results = _activate_coupons(browser)
 
+        activated = results.get("activated", 0)
+        failed = results.get("failed", 0)
+
         print("\n" + "=" * 50)
         print("PAYBACK COUPON ACTIVATION RESULTS")
         print("=" * 50)
-        print(f"  Activated : {results.get('activated', 0)}")
+        print(f"  Activated : {activated}")
         print(f"  Skipped   : {results.get('skipped', 0)}  (already active)")
-        print(f"  Failed    : {results.get('failed', 0)}")
+        print(f"  Failed    : {failed}")
         if results.get("errors"):
             print(f"  Errors    : {results['errors'][:3]}")
         print("=" * 50)
+
+        _notify_ha(activated, failed)
 
     except Exception as e:
         log.error(f"Error: {e}")
