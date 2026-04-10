@@ -161,6 +161,49 @@ for section in lidl.coupons()["sections"]:
     print("found coupon: ", coupon["title"], coupon["id"])
 ```
 
+## Quick Auth Script (`lidl-auth.sh`)
+
+A convenience wrapper script that handles authentication automatically.
+
+#### Setup
+
+Copy `.env.example` to `.env` and fill in your credentials:
+```bash
+cp .env.example .env
+```
+```env
+LIDL_EMAIL=your@email.com
+LIDL_PASSWORD=yourpassword
+LIDL_REFRESH_TOKEN=        # filled automatically after first login
+```
+
+#### Usage
+
+```bash
+# Use saved refresh token — instant, no browser needed
+./lidl-auth.sh
+
+# Open browser for manual login (use when token expires or first time)
+./lidl-auth.sh --debug
+
+# Login as a different user (overrides .env values)
+./lidl-auth.sh -u other@email.com -p theirpassword --debug
+
+# Login as a different user headlessly
+./lidl-auth.sh -u other@email.com -p theirpassword
+```
+
+| Option | Description |
+|---|---|
+| `--debug` | Opens Firefox for manual login (recommended to bypass bot detection) |
+| `-u`, `--user` | Override email from `.env` |
+| `-p`, `--password` | Override password from `.env` |
+
+> [!TIP]
+> When using `--debug`, Firefox opens and shows the login form. Fill in your email and password and click **Anmelden**. If a rate-limit page appears ("Die Kapazität wurde überschritten"), just re-enter your password and click Anmelden again. The script captures the token automatically.
+>
+> Once you have a refresh token, paste it into `.env` as `LIDL_REFRESH_TOKEN` and future runs will be instant with no browser.
+
 ## Help
 #### Commandline-Tool
 ```commandline
