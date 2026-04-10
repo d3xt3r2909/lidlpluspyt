@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_REFRESH_TOKEN, DOMAIN, UPDATE_INTERVAL_MINUTES
+from .const import CONF_REFRESH_TOKEN, DOMAIN, UPDATE_INTERVAL_HOURS
 from .lidl_api import LidlApiClient, LidlAuthError
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class LidlPlusCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=UPDATE_INTERVAL_MINUTES),
+            update_interval=timedelta(hours=UPDATE_INTERVAL_HOURS),
         )
         self.client = client
         self.entry = entry

@@ -4,7 +4,7 @@ CONF_REFRESH_TOKEN = "refresh_token"
 CONF_LANGUAGE = "language"
 CONF_COUNTRY = "country"
 
-UPDATE_INTERVAL_MINUTES = 30
+UPDATE_INTERVAL_HOURS = 24
 
 SENSOR_COUPONS_AVAILABLE = "coupons_available"
 SENSOR_COUPONS_ACTIVATED = "coupons_activated"
