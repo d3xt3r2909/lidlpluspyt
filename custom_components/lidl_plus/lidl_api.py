@@ -264,7 +264,6 @@ class LidlApiClient:
 
     def coupons(self) -> list[dict]:
         """Return flat list of all promotions."""
-        import json as _json, time as _time
         headers = {**self._default_headers(), "Country": self._country}
         resp = requests.get(
             f"{_COUPONS_API}/v2/promotionsList",
@@ -275,14 +274,6 @@ class LidlApiClient:
         promotions = []
         for section in data.get("sections", []):
             promotions.extend(section.get("promotions", []))
-        # #region agent log
-        if promotions:
-            try:
-                with open("/config/lidl_coupon_sample.json", "w") as _f:
-                    _json.dump(promotions[0], _f, indent=2, ensure_ascii=False)
-            except Exception:
-                pass
-        # #endregion
         return promotions
 
     def activate_coupon(self, coupon_id: str) -> bool:

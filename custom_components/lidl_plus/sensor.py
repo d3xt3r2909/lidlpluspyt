@@ -64,18 +64,22 @@ class LidlCouponsAvailableSensor(LidlBaseSensor):
             return {}
         coupons = []
         for c in self.coordinator.data["coupons"]:
+            discount_obj = c.get("discount") or {}
+            validity_obj = c.get("validity") or {}
             coupons.append({
                 "id": c.get("id"),
                 "title": c.get("title") or c.get("offerTitle", ""),
-                "description": c.get("shortDescription") or c.get("description", ""),
-                "discount": c.get("promotionDescription") or c.get("discountText", ""),
+                "description": discount_obj.get("description", ""),
+                "discount": discount_obj.get("title", ""),
                 "image": (
                     c.get("imageUrl")
                     or c.get("image")
                     or (c.get("images") or [{}])[0].get("url", "")
                 ),
-                "valid_until": c.get("endDate") or c.get("validUntil", ""),
+                "valid_until": (validity_obj.get("end") or "")[:10],
                 "activated": c.get("isActivated", False),
+                "channel": c.get("channel", ""),
+                "is_special": c.get("isSpecial", False),
             })
         return {
             "coupons": [c for c in coupons if not c["activated"]],
