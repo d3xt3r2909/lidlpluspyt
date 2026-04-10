@@ -3,12 +3,23 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from typing import Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_REFRESH_TOKEN, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_HOURS, DOMAIN
+from .const import (
+    CONF_ACTIVATION_DAY,
+    CONF_ACTIVATION_HOUR,
+    CONF_REFRESH_TOKEN,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_ACTIVATION_DAY,
+    DEFAULT_ACTIVATION_HOUR,
+    DEFAULT_UPDATE_INTERVAL_HOURS,
+    DOMAIN,
+)
 from .lidl_api import LidlApiClient, LidlAuthError
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,6 +38,30 @@ class LidlPlusCoordinator(DataUpdateCoordinator):
         )
         self.client = client
         self.entry = entry
+        self._unsub_activation: Callable | None = None
+        self.reschedule_activation(
+            day=entry.options.get(CONF_ACTIVATION_DAY, DEFAULT_ACTIVATION_DAY),
+            hour=entry.options.get(CONF_ACTIVATION_HOUR, DEFAULT_ACTIVATION_HOUR),
+        )
+
+    def reschedule_activation(self, day: int, hour: int) -> None:
+        """Register (or re-register) the timed coupon activation listener."""
+        if self._unsub_activation:
+            self._unsub_activation()
+            self._unsub_activation = None
+
+        async def _activate_coupons(_now: datetime) -> None:
+            # day==7 means every day; otherwise only on the matching weekday
+            if day != 7 and _now.weekday() != day:
+                return
+            _LOGGER.info("Lidl Plus: auto-activating coupons (day=%s, hour=%s)", day, hour)
+            results = await self.hass.async_add_executor_job(self.client.activate_all_coupons)
+            _LOGGER.info("Lidl Plus activation results: %s", results)
+            await self.async_request_refresh()
+
+        self._unsub_activation = async_track_time_change(
+            self.hass, _activate_coupons, hour=hour, minute=0, second=0
+        )
 
     async def _async_update_data(self) -> dict:
         try:

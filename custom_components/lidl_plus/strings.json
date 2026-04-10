@@ -3,8 +3,11 @@
     "step": {
       "init": {
         "title": "Lidl Plus Options",
+        "description": "Coupon activation day: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun, 7=Every day",
         "data": {
-          "update_interval_hours": "Data refresh interval (hours, 1–168)"
+          "update_interval_hours": "Data refresh interval (hours, 1–168)",
+          "activation_day": "Coupon activation day (0=Mon … 6=Sun, 7=Every day)",
+          "activation_hour": "Coupon activation hour (0–23)"
         }
       }
     }

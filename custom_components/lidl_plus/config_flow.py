@@ -6,12 +6,17 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
+    CONF_ACTIVATION_DAY,
+    CONF_ACTIVATION_HOUR,
     CONF_COUNTRY,
     CONF_LANGUAGE,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_ACTIVATION_DAY,
+    DEFAULT_ACTIVATION_HOUR,
     DEFAULT_UPDATE_INTERVAL_HOURS,
     DOMAIN,
+    WEEKDAYS,
 )
 from .lidl_api import LidlApiClient, LidlAuthError
 
@@ -75,22 +80,36 @@ class LidlPlusOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
         if user_input is not None:
-            # Reload coordinator with new interval
-            self.hass.data[DOMAIN][self._config_entry.entry_id].update_interval = (
-                __import__("datetime").timedelta(hours=user_input[CONF_UPDATE_INTERVAL])
+            coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id]
+            coordinator.update_interval = __import__("datetime").timedelta(
+                hours=user_input[CONF_UPDATE_INTERVAL]
+            )
+            coordinator.reschedule_activation(
+                day=user_input[CONF_ACTIVATION_DAY],
+                hour=user_input[CONF_ACTIVATION_HOUR],
             )
             return self.async_create_entry(title="", data=user_input)
 
-        current_interval = self._config_entry.options.get(
-            CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_HOURS
-        )
+        opts = self._config_entry.options
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_UPDATE_INTERVAL, default=current_interval): vol.All(
-                        int, vol.Range(min=1, max=168)  # 1 hour to 1 week
-                    ),
+                    vol.Required(
+                        CONF_UPDATE_INTERVAL,
+                        default=opts.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_HOURS),
+                    ): vol.All(int, vol.Range(min=1, max=168)),
+                    vol.Required(
+                        CONF_ACTIVATION_DAY,
+                        default=opts.get(CONF_ACTIVATION_DAY, DEFAULT_ACTIVATION_DAY),
+                    ): vol.In({k: v for k, v in WEEKDAYS.items()}),
+                    vol.Required(
+                        CONF_ACTIVATION_HOUR,
+                        default=opts.get(CONF_ACTIVATION_HOUR, DEFAULT_ACTIVATION_HOUR),
+                    ): vol.All(int, vol.Range(min=0, max=23)),
                 }
             ),
+            description_placeholders={
+                "days": ", ".join(f"{k}={v}" for k, v in WEEKDAYS.items())
+            },
         )
