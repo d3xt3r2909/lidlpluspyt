@@ -3,10 +3,16 @@
 Payback.de — activate all coupons via browser automation.
 
 Usage:
-    python3 payback/activate.py --debug   (visible Firefox, manual login)
-    python3 payback/activate.py           (headless, auto-login from .env)
+    python3 payback/activate.py --login    Open visible Firefox, log in manually,
+                                           save session cookies, then quit.
+    python3 payback/activate.py            Headless run using saved cookies.
+    python3 payback/activate.py --debug    Headless run but keep browser open on error.
+
+First-time setup (or when cookies expire):
+    ./payback/payback.sh --login
 """
 import argparse
+import json
 import logging
 import os
 import sys
@@ -15,7 +21,6 @@ import time
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
-# Suppress selenium-wire and urllib3 noise
 for _noisy in ("seleniumwire", "urllib3", "hpack", "selenium.webdriver.remote"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
@@ -31,36 +36,24 @@ except ImportError:
 BASE_URL = "https://www.payback.de"
 LOGIN_URL = f"{BASE_URL}/login"
 COUPONS_URL = f"{BASE_URL}/coupons"
+COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.json")
 
-# Payback uses React/MUI. Unactivated coupons show a "Jetzt aktivieren" button.
-# Already-activated coupons show "Online einlösen" / "Vor Ort einlösen" instead.
 ACTIVATE_JS = """
 return (function() {
     var results = {activated: 0, skipped: 0, failed: 0, errors: []};
-
     try {
         var activateBtns = Array.from(document.querySelectorAll('button')).filter(function(b) {
             return b.textContent.trim() === 'Jetzt aktivieren' && !b.disabled;
         });
-
         if (activateBtns.length === 0) {
             results.errors.push("No 'Jetzt aktivieren' buttons found");
             return results;
         }
-
         activateBtns.forEach(function(btn) {
-            try {
-                btn.click();
-                results.activated++;
-            } catch(e) {
-                results.failed++;
-                results.errors.push(e.toString().substring(0, 100));
-            }
+            try { btn.click(); results.activated++; }
+            catch(e) { results.failed++; results.errors.push(e.toString().substring(0, 100)); }
         });
-    } catch(e) {
-        results.errors.push(e.toString());
-    }
-
+    } catch(e) { results.errors.push(e.toString()); }
     return results;
 })();
 """
@@ -85,7 +78,6 @@ def _init_browser(headless: bool) -> webdriver.Firefox:
     options.accept_insecure_certs = True
     if headless:
         options.add_argument("--headless")
-
     browser = webdriver.Firefox(
         options=options,
         seleniumwire_options={"verify_ssl": False},
@@ -104,8 +96,8 @@ def _accept_cookies(browser):
         time.sleep(1)
     except Exception:
         try:
-            btn = browser.find_element(By.XPATH,
-                "//*[contains(@id,'accept') or contains(text(),'Alle akzeptieren')]"
+            btn = browser.find_element(
+                By.XPATH, "//*[contains(@id,'accept') or contains(text(),'Alle akzeptieren')]"
             )
             browser.execute_script("arguments[0].click();", btn)
             log.info("Cookie banner dismissed")
@@ -114,65 +106,85 @@ def _accept_cookies(browser):
             pass
 
 
-def _login(browser, wait, email: str, password: str, debug: bool):
-    log.info("Opening login page...")
+def _save_cookies(browser):
+    cookies = browser.get_cookies()
+    with open(COOKIES_FILE, "w") as f:
+        json.dump(cookies, f, indent=2)
+    log.info(f"Saved {len(cookies)} cookies to {COOKIES_FILE}")
+
+
+def _load_cookies(browser):
+    if not os.path.exists(COOKIES_FILE):
+        return False
+    with open(COOKIES_FILE) as f:
+        cookies = json.load(f)
+    # Must be on the domain before adding cookies
+    browser.get(BASE_URL)
+    time.sleep(2)
+    for cookie in cookies:
+        # Remove keys Firefox driver doesn't accept
+        cookie.pop("sameSite", None)
+        try:
+            browser.add_cookie(cookie)
+        except Exception:
+            pass
+    log.info(f"Loaded {len(cookies)} cookies")
+    return True
+
+
+def _is_logged_in(browser) -> bool:
+    cur = browser.current_url
+    title = browser.title.lower()
+    return "/login" not in cur and "payback.de" in cur and "404" not in title
+
+
+def login_flow(browser):
+    """Interactive login: open login page, wait for user, save cookies."""
+    log.info("Opening login page in visible browser...")
     browser.get(LOGIN_URL)
     time.sleep(2)
     _accept_cookies(browser)
 
-    if debug:
-        log.info("Browser ready — please fill in email and password if not auto-filled, then submit.")
-        log.info("Waiting up to 120 seconds for login to complete...")
-    else:
-        log.info("Filling in credentials...")
-        try:
-            email_field = wait.until(EC.presence_of_element_located(
-                (By.XPATH, "//input[@type='email' or @name='email' or @id='email' or @autocomplete='email']")
-            ))
-            browser.execute_script("arguments[0].value = arguments[1];", email_field, email)
-            browser.execute_script(
-                "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));", email_field
-            )
-            time.sleep(0.5)
-            try:
-                next_btn = browser.find_element(By.XPATH,
-                    "//button[@type='submit' or contains(@class,'next') or contains(@class,'weiter')]"
-                )
-                next_btn.click()
-                time.sleep(1.5)
-            except Exception:
-                pass
+    log.info("=" * 55)
+    log.info("Please log in manually in the Firefox window.")
+    log.info("Waiting up to 3 minutes for login to complete...")
+    log.info("=" * 55)
 
-            pwd_field = wait.until(EC.presence_of_element_located(
-                (By.XPATH, "//input[@type='password']")
-            ))
-            browser.execute_script("arguments[0].value = arguments[1];", pwd_field, password)
-            browser.execute_script(
-                "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));", pwd_field
-            )
-            time.sleep(0.5)
-            submit = browser.find_element(By.XPATH,
-                "//button[@type='submit' or contains(@class,'login') or contains(@class,'anmelden')]"
-            )
-            submit.click()
-        except Exception as e:
-            raise RuntimeError(f"Could not auto-fill login form: {e}. Try --debug for manual login.") from e
-
-    timeout = 120 if debug else 30
     start = time.time()
-    while time.time() - start < timeout:
-        cur = browser.current_url
-        title = browser.title.lower()
-        if "/login" not in cur and "payback.de" in cur and "404" not in title and "not found" not in title:
-            log.info(f"Logged in. Current URL: {cur}")
+    while time.time() - start < 180:
+        if _is_logged_in(browser):
+            log.info(f"Logged in! URL: {browser.current_url}")
+            time.sleep(2)  # let the page settle
+            _save_cookies(browser)
             return
         time.sleep(2)
 
-    raise RuntimeError("Login timed out — check credentials or try --debug")
+    raise RuntimeError("Login timed out after 3 minutes")
 
 
-def _activate_coupons(browser, wait) -> dict:
-    log.info(f"Navigating to coupons page: {COUPONS_URL}")
+def headless_flow(browser) -> bool:
+    """Load saved cookies and verify we are still logged in."""
+    if not os.path.exists(COOKIES_FILE):
+        log.error("No saved session found.")
+        log.error("Run first:  ./payback/payback.sh --login")
+        return False
+
+    _load_cookies(browser)
+    browser.refresh()
+    time.sleep(3)
+
+    if _is_logged_in(browser):
+        log.info(f"Session valid. URL: {browser.current_url}")
+        return True
+
+    # Might have landed on login page — cookies are expired
+    log.error("Session expired or invalid.")
+    log.error("Run again with:  ./payback/payback.sh --login")
+    return False
+
+
+def _activate_coupons(browser) -> dict:
+    log.info(f"Navigating to coupons page...")
     browser.get(COUPONS_URL)
 
     log.info("Waiting for coupon list to render...")
@@ -187,10 +199,13 @@ def _activate_coupons(browser, wait) -> dict:
 
     info = browser.execute_script(INSPECT_JS)
     if not info.get("found"):
-        raise RuntimeError("Coupon list not found — check if you are logged in or if Payback changed their structure")
+        raise RuntimeError(
+            "Coupon list not found — session may have expired. "
+            "Run ./payback/payback.sh --login to renew."
+        )
 
     count = info.get("activatable", 0)
-    log.info(f"Found {count} coupon(s). Scrolling to trigger lazy loading...")
+    log.info(f"Found {count} activatable coupon(s). Scrolling to load all...")
 
     browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
     time.sleep(1)
@@ -199,53 +214,48 @@ def _activate_coupons(browser, wait) -> dict:
 
     info2 = browser.execute_script(INSPECT_JS)
     final_count = info2.get("activatable", count)
-    log.info(f"Activating {final_count} coupon(s)... (do not close the browser)")
+    log.info(f"Activating {final_count} coupon(s)...")
 
     return browser.execute_script(ACTIVATE_JS)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Activate all Payback.de coupons")
-    parser.add_argument("--debug", action="store_true", help="Open visible browser for manual login")
-    parser.add_argument("-u", "--user", help="Payback email (or set PAYBACK_EMAIL in .env)")
-    parser.add_argument("-p", "--password", help="Payback password (or set PAYBACK_PASSWORD in .env)")
+    parser.add_argument(
+        "--login",
+        action="store_true",
+        help="Open visible browser to log in and save session cookies",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Keep browser open on error (headless run only)",
+    )
     args = parser.parse_args()
 
-    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    os.environ.setdefault(k.strip(), v.strip())
-
-    email = args.user or os.environ.get("PAYBACK_EMAIL", "")
-    password = args.password or os.environ.get("PAYBACK_PASSWORD", "")
-
-    if not email or not password:
-        sys.exit(
-            "ERROR: Payback credentials required.\n"
-            "Add PAYBACK_EMAIL and PAYBACK_PASSWORD to .env\n"
-            "or pass -u email -p password"
-        )
-
-    browser = _init_browser(headless=not args.debug)
-    wait = WebDriverWait(browser, 20)
+    headless = not args.login
+    browser = _init_browser(headless=headless)
 
     try:
-        _login(browser, wait, email, password, args.debug)
-        results = _activate_coupons(browser, wait)
+        if args.login:
+            login_flow(browser)
+            log.info("Session saved. You can now run the script without --login.")
+            return
 
-        print("\n" + "="*50)
+        if not headless_flow(browser):
+            sys.exit(1)
+
+        results = _activate_coupons(browser)
+
+        print("\n" + "=" * 50)
         print("PAYBACK COUPON ACTIVATION RESULTS")
-        print("="*50)
+        print("=" * 50)
         print(f"  Activated : {results.get('activated', 0)}")
         print(f"  Skipped   : {results.get('skipped', 0)}  (already active)")
         print(f"  Failed    : {results.get('failed', 0)}")
         if results.get("errors"):
             print(f"  Errors    : {results['errors'][:3]}")
-        print("="*50)
+        print("=" * 50)
 
     except Exception as e:
         log.error(f"Error: {e}")

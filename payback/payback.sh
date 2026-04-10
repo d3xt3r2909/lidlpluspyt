@@ -1,10 +1,14 @@
 #!/bin/bash
 # Payback.de coupon activator
 #
-# Usage:
-#   ./payback/payback.sh           — headless, uses .env credentials
-#   ./payback/payback.sh --debug   — opens Firefox for manual interaction
-#   ./payback/payback.sh -u email -p pass --debug
+# First-time setup (or when session expires):
+#   ./payback/payback.sh --login      Opens Firefox, you log in manually, cookies are saved
+#
+# Normal headless run (use in cron / Home Assistant):
+#   ./payback/payback.sh              Uses saved cookies, activates all coupons, quits
+#
+# Debug headless run (keeps browser open on error):
+#   ./payback/payback.sh --debug
 
 cd "$(dirname "$0")/.."
 source ../venv/bin/activate 2>/dev/null || source venv/bin/activate 2>/dev/null || true
