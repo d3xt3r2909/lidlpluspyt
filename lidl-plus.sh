@@ -43,7 +43,14 @@ if [[ "$CMD" == "auth" ]]; then
   if [ -n "$REFRESH" ] && [ -z "$DEBUG_FLAG" ]; then
     lidl-plus -l de -c DE -r "$REFRESH" auth
   else
-    lidl-plus -l de -c DE -m e -u "$EMAIL" -p "$PASSWORD" --2fa email $DEBUG_FLAG auth
+    OUTPUT=$(lidl-plus -l de -c DE -m e -u "$EMAIL" -p "$PASSWORD" --2fa email $DEBUG_FLAG auth)
+    echo "$OUTPUT"
+    NEW_TOKEN=$(echo "$OUTPUT" | grep -A1 "refresh token" | tail -1 | tr -d '[:space:]')
+    if [ -n "$NEW_TOKEN" ] && [ ${#NEW_TOKEN} -gt 20 ]; then
+      sed -i '' "s/^LIDL_REFRESH_TOKEN=.*/LIDL_REFRESH_TOKEN=$NEW_TOKEN/" .env
+      echo ""
+      echo "✓ Refresh token saved to .env"
+    fi
   fi
 else
   if [ -z "$REFRESH" ]; then
