@@ -52,7 +52,7 @@ class LidlPlusApi:
     _PROFILE_API = "https://profile.lidlplus.com/profile/api"
     _APP = "com.lidlplus.app"
     _OS = "iOs"
-    _TIMEOUT = 10
+    _TIMEOUT = 30
 
     def __init__(self, language, country, refresh_token=""):
         self._login_url = ""
@@ -410,10 +410,15 @@ class LidlPlusApi:
 
     def coupons(self):
         """Get list of all coupons"""
-        url = f"{self._COUPONS_API}/v2/promotionsList"
         headers = {**self._default_headers(), "Country": self._country}
         kwargs = {"headers": headers, "timeout": self._TIMEOUT}
-        return requests.get(url, **kwargs).json()
+        # Try v2 first, fall back to v1 if it fails
+        try:
+            url = f"{self._COUPONS_API}/v2/promotionsList"
+            return requests.get(url, **kwargs).json()
+        except Exception:
+            url = f"{self._COUPONS_V1_API}/v1/promotionslist"
+            return requests.get(url, **kwargs).json()
 
     def activate_coupon(self, coupon_id):
         """Activate single coupon by id"""
