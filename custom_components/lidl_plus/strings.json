@@ -10,9 +10,16 @@
           "country": "Country code (e.g. DE)"
         }
       },
+      "browser_login": {
+        "title": "Lidl Plus – Browser Login",
+        "description": "1. Open this URL in any browser (phone, laptop, etc.):\n\n{auth_url}\n\n2. Log in to your Lidl Plus account.\n3. After login, the browser will redirect to a page that shows an error or nothing — that is normal.\n4. Copy the full URL from the address bar and paste it below.",
+        "data": {
+          "callback_url": "Paste the redirect URL here"
+        }
+      },
       "credentials": {
         "title": "Lidl Plus – Email & Password",
-        "description": "Enter your Lidl Plus credentials. HA will log in automatically and renew tokens in the background. Note: {note}",
+        "description": "HA will attempt a direct (no browser) login. This may fail if Lidl enforces CAPTCHA.",
         "data": {
           "email": "Email address",
           "password": "Password"
@@ -27,16 +34,17 @@
       },
       "reauth_confirm": {
         "title": "Lidl Plus – Re-authentication required",
-        "description": "{method}",
+        "description": "{note}",
         "data": {
-          "refresh_token": "New refresh token (optional)"
+          "callback_url": "Paste the redirect URL here (or leave empty to retry saved credentials)"
         }
       }
     },
     "error": {
       "invalid_auth": "Invalid or expired token / wrong credentials.",
       "cannot_connect": "Cannot connect to Lidl Plus servers.",
-      "captcha_required": "Lidl requires CAPTCHA — please paste a manually obtained refresh token instead."
+      "captcha_required": "Lidl requires CAPTCHA — use the 'Open browser' method instead.",
+      "invalid_code": "Could not extract an auth code from the pasted URL. Make sure you copied the full address bar URL after the redirect."
     },
     "abort": {
       "already_configured": "Lidl Plus is already configured.",

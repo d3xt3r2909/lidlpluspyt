@@ -20,7 +20,15 @@ from .const import (
     DOMAIN,
     WEEKDAYS,
 )
-from .lidl_api import LidlApiClient, LidlAuthError, login_with_credentials
+from .lidl_api import (
+    LidlApiClient,
+    LidlAuthError,
+    build_auth_url,
+    exchange_callback_url,
+    login_with_credentials,
+)
+
+_CONF_CALLBACK_URL = "callback_url"
 
 
 class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -28,11 +36,25 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        self._language = "de"
+        self._country = "DE"
+        self._pkce_verifier: str = ""
+        self._email: str = ""
+        self._password: str = ""
+
+    # ------------------------------------------------------------------
+    # Step 1: method selection
+    # ------------------------------------------------------------------
+
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
-        """First step: choose setup method."""
         if user_input is not None:
-            self._step_user_data = user_input
-            if user_input.get("method") == "credentials":
+            self._language = user_input[CONF_LANGUAGE]
+            self._country = user_input[CONF_COUNTRY]
+            method = user_input.get("method", "browser")
+            if method == "browser":
+                return await self.async_step_browser_login()
+            if method == "credentials":
                 return await self.async_step_credentials()
             return await self.async_step_token()
 
@@ -40,9 +62,10 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required("method", default="credentials"): vol.In(
+                    vol.Required("method", default="browser"): vol.In(
                         {
-                            "credentials": "Email & password (recommended)",
+                            "browser": "Open browser to log in (any laptop/phone)",
+                            "credentials": "Email & password (auto-renew, may fail on CAPTCHA)",
                             "token": "Paste refresh token manually",
                         }
                     ),
@@ -53,42 +76,86 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
-    # Path A: email + password → headless login
+    # Path A: browser login (open URL → paste callback)
+    # ------------------------------------------------------------------
+
+    async def async_step_browser_login(self, user_input: dict | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        # Generate the auth URL the first time this step is shown
+        if not self._pkce_verifier:
+            auth_url, self._pkce_verifier = await self.hass.async_add_executor_job(
+                build_auth_url, self._language, self._country
+            )
+            self._auth_url = auth_url
+
+        if user_input is not None:
+            pasted = user_input.get(_CONF_CALLBACK_URL, "").strip()
+            try:
+                refresh_token = await self.hass.async_add_executor_job(
+                    exchange_callback_url, pasted, self._pkce_verifier
+                )
+                data = {
+                    CONF_LANGUAGE: self._language,
+                    CONF_COUNTRY: self._country,
+                    CONF_REFRESH_TOKEN: refresh_token,
+                }
+                unique_id = f"{self._country}_{self._language}"
+                await self.async_set_unique_id(unique_id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=f"Lidl Plus ({self._country})",
+                    data=data,
+                )
+            except LidlAuthError:
+                errors["base"] = "invalid_code"
+                # Regenerate URL + verifier so a fresh attempt is possible
+                auth_url, self._pkce_verifier = await self.hass.async_add_executor_job(
+                    build_auth_url, self._language, self._country
+                )
+                self._auth_url = auth_url
+
+        return self.async_show_form(
+            step_id="browser_login",
+            data_schema=vol.Schema({vol.Required(_CONF_CALLBACK_URL): str}),
+            errors=errors,
+            description_placeholders={"auth_url": self._auth_url},
+        )
+
+    # ------------------------------------------------------------------
+    # Path B: email + password → headless login (no browser)
     # ------------------------------------------------------------------
 
     async def async_step_credentials(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
-        # Pull language/country carried from step_user
-        stored = getattr(self, "_step_user_data", {})
 
         if user_input is not None:
-            language = stored.get(CONF_LANGUAGE, "de")
-            country = stored.get(CONF_COUNTRY, "DE")
-            email = user_input[CONF_EMAIL]
-            password = user_input[CONF_PASSWORD]
+            self._email = user_input[CONF_EMAIL]
+            self._password = user_input[CONF_PASSWORD]
             try:
                 refresh_token = await self.hass.async_add_executor_job(
-                    login_with_credentials, language, country, email, password
+                    login_with_credentials,
+                    self._language,
+                    self._country,
+                    self._email,
+                    self._password,
                 )
                 data = {
-                    CONF_LANGUAGE: language,
-                    CONF_COUNTRY: country,
+                    CONF_LANGUAGE: self._language,
+                    CONF_COUNTRY: self._country,
                     CONF_REFRESH_TOKEN: refresh_token,
-                    CONF_EMAIL: email,
-                    CONF_PASSWORD: password,
+                    CONF_EMAIL: self._email,
+                    CONF_PASSWORD: self._password,
                 }
-                unique_id = f"{country}_{language}"
+                unique_id = f"{self._country}_{self._language}"
                 await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=f"Lidl Plus ({country})",
+                    title=f"Lidl Plus ({self._country})",
                     data=data,
                 )
             except LidlAuthError as exc:
-                if "CAPTCHA" in str(exc):
-                    errors["base"] = "captcha_required"
-                else:
-                    errors["base"] = "invalid_auth"
+                errors["base"] = "captcha_required" if "CAPTCHA" in str(exc) else "invalid_auth"
             except Exception:  # noqa: BLE001
                 errors["base"] = "cannot_connect"
 
@@ -101,28 +168,19 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
-            description_placeholders={
-                "note": (
-                    "If login fails with 'captcha_required', use the "
-                    "'Paste refresh token' method instead."
-                )
-            },
         )
 
     # ------------------------------------------------------------------
-    # Path B: paste token manually
+    # Path C: paste token manually
     # ------------------------------------------------------------------
 
     async def async_step_token(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
-        stored = getattr(self, "_step_user_data", {})
 
         if user_input is not None:
-            language = stored.get(CONF_LANGUAGE, "de")
-            country = stored.get(CONF_COUNTRY, "DE")
             client = LidlApiClient(
-                language=language,
-                country=country,
+                language=self._language,
+                country=self._country,
                 refresh_token=user_input[CONF_REFRESH_TOKEN],
             )
             try:
@@ -131,15 +189,15 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "invalid_auth"
                 else:
                     data = {
-                        CONF_LANGUAGE: language,
-                        CONF_COUNTRY: country,
+                        CONF_LANGUAGE: self._language,
+                        CONF_COUNTRY: self._country,
                         CONF_REFRESH_TOKEN: client.refresh_token,
                     }
-                    unique_id = f"{country}_{language}"
+                    unique_id = f"{self._country}_{self._language}"
                     await self.async_set_unique_id(unique_id)
                     self._abort_if_unique_id_configured()
                     return self.async_create_entry(
-                        title=f"Lidl Plus ({country})",
+                        title=f"Lidl Plus ({self._country})",
                         data=data,
                     )
             except LidlAuthError:
@@ -154,11 +212,10 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
-    # Reauth: shown by HA when the token renewal fails
+    # Reauth: triggered by HA when token renewal fails
     # ------------------------------------------------------------------
 
     async def async_step_reauth(self, entry_data: dict) -> FlowResult:
-        """Start reauth when HA detects the token is invalid."""
         self._reauth_entry = self.hass.config_entries.async_get_entry(
             self.context["entry_id"]
         )
@@ -171,13 +228,37 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             entry.data.get(CONF_EMAIL) and entry.data.get(CONF_PASSWORD)
         )
 
+        # Generate a fresh browser-login URL for the reauth form
+        if not self._pkce_verifier:
+            auth_url, self._pkce_verifier = await self.hass.async_add_executor_job(
+                build_auth_url,
+                entry.data[CONF_LANGUAGE],
+                entry.data[CONF_COUNTRY],
+            )
+            self._auth_url = auth_url
+
         if user_input is not None:
             language = entry.data[CONF_LANGUAGE]
             country = entry.data[CONF_COUNTRY]
             new_token: str | None = None
 
-            # Try credential-based renewal first (if credentials available)
-            if has_credentials and not user_input.get(CONF_REFRESH_TOKEN):
+            pasted = (user_input.get(_CONF_CALLBACK_URL) or "").strip()
+            if pasted:
+                # Browser-based reauth: user pasted callback URL
+                try:
+                    new_token = await self.hass.async_add_executor_job(
+                        exchange_callback_url, pasted, self._pkce_verifier
+                    )
+                except LidlAuthError:
+                    errors["base"] = "invalid_code"
+                    # Fresh URL for retry
+                    auth_url, self._pkce_verifier = await self.hass.async_add_executor_job(
+                        build_auth_url, language, country
+                    )
+                    self._auth_url = auth_url
+
+            elif has_credentials:
+                # Try saved credentials silently
                 try:
                     new_token = await self.hass.async_add_executor_job(
                         login_with_credentials,
@@ -189,23 +270,8 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 except LidlAuthError:
                     errors["base"] = "captcha_required"
 
-            # Fall back to / use manual token
-            if not new_token and user_input.get(CONF_REFRESH_TOKEN):
-                client = LidlApiClient(
-                    language=language,
-                    country=country,
-                    refresh_token=user_input[CONF_REFRESH_TOKEN],
-                )
-                try:
-                    valid = await self.hass.async_add_executor_job(client.validate)
-                    if valid:
-                        new_token = client.refresh_token
-                    else:
-                        errors["base"] = "invalid_auth"
-                except LidlAuthError:
-                    errors["base"] = "invalid_auth"
-                except Exception:  # noqa: BLE001
-                    errors["base"] = "cannot_connect"
+            if not errors and not new_token:
+                errors["base"] = "invalid_auth"
 
             if new_token:
                 self.hass.config_entries.async_update_entry(
@@ -215,23 +281,28 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.hass.config_entries.async_reload(entry.entry_id)
                 return self.async_abort(reason="reauth_successful")
 
+        description = (
+            "Open the URL below in any browser, log in to Lidl Plus, "
+            "then copy the full address bar URL after the redirect (it starts with "
+            "com.lidlplus.app:// or shows an error page) and paste it below.\n\n"
+            f"{self._auth_url}"
+        )
+        if has_credentials:
+            description += (
+                "\n\nAlternatively, leave the field empty to retry with your saved credentials."
+            )
+
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema(
-                {vol.Optional(CONF_REFRESH_TOKEN): str}
-            ),
+            data_schema=vol.Schema({vol.Optional(_CONF_CALLBACK_URL): str}),
             errors=errors,
-            description_placeholders={
-                "method": (
-                    "Leave the token field empty to retry with your saved credentials."
-                    if has_credentials
-                    else "Enter a new refresh token obtained from the lidl-auth script."
-                )
-            },
+            description_placeholders={"auth_url": self._auth_url, "note": description},
         )
 
     @staticmethod
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> LidlPlusOptionsFlow:
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> LidlPlusOptionsFlow:
         return LidlPlusOptionsFlow(config_entry)
 
 

@@ -37,6 +37,50 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
+def build_auth_url(language: str, country: str) -> tuple[str, str]:
+    """
+    Generate a Lidl PKCE auth URL to open in any browser.
+
+    Returns (url, verifier). Keep the verifier — you need it to exchange the
+    code that comes back in the callback URL.
+    """
+    language = language.lower()
+    country = country.upper()
+    verifier, challenge = _pkce_pair()
+    params = (
+        f"client_id={_CLIENT_ID}"
+        f"&response_type=code"
+        f"&scope=openid%20profile%20offline_access%20lpprofile%20lpapis"
+        f"&redirect_uri={_APP}%3A%2F%2Fcallback"
+        f"&code_challenge={challenge}"
+        f"&code_challenge_method=S256"
+        f"&Country={country}"
+        f"&language={language}-{country}"
+    )
+    url = f"{_AUTH_API}/connect/authorize?{params}"
+    return url, verifier
+
+
+def exchange_callback_url(callback_url_or_code: str, verifier: str) -> str:
+    """
+    Given the callback URL (or just the code string) pasted by the user,
+    extract the auth code and exchange it for a refresh token.
+    """
+    code_match = re.search(r"[?&]code=([0-9A-Za-z_-]+)", callback_url_or_code)
+    if not code_match:
+        # Maybe the user pasted just the code itself
+        if re.fullmatch(r"[0-9A-Za-z_-]{20,}", callback_url_or_code.strip()):
+            code = callback_url_or_code.strip()
+        else:
+            raise LidlAuthError(
+                "Could not find an auth code in the pasted URL. "
+                "Make sure you copied the full address bar URL after logging in."
+            )
+    else:
+        code = code_match.group(1)
+    return _exchange_code(code, verifier)
+
+
 def _exchange_code(code: str, verifier: str) -> str:
     """Exchange an OAuth auth code + PKCE verifier for a refresh token."""
     secret = base64.b64encode(f"{_CLIENT_ID}:secret".encode()).decode()
