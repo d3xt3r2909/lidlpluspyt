@@ -28,6 +28,7 @@ def get_arguments():
     parser.add_argument("-l", "--language", metavar="LANG", help="language (de, en, fr, it, ...)")
     parser.add_argument("-u", "--user", help="Lidl Plus login username")
     parser.add_argument("-p", "--password", metavar="XXX", help="Lidl Plus login password")
+    parser.add_argument("-m", "--method", choices=["e", "p"], help="login method: e=email, p=phone")
     parser.add_argument(
         "--2fa",
         choices=["phone", "email"],
@@ -84,7 +85,7 @@ def lidl_plus_login(args):
     country = args.get("country") or input("Enter your country (DE, AT, ...): ")
     if args.get("refresh_token"):
         return LidlPlusApi(language, country, args.get("refresh_token"))
-    login_method = input("Login with email or phone number? ([e]mail / [p]hone): ")
+    login_method = args.get("method") or input("Login with email or phone number? ([e]mail / [p]hone): ")
     if login_method.lower() not in ["e", "p"]:
         exit(1)
     if login_method == "e":

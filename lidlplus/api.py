@@ -21,11 +21,13 @@ try:
     from getuseragent import UserAgent
     from oic.oic import Client
     from oic.utils.authn.client import CLIENT_AUTHN_METHOD
+    from selenium.common.exceptions import InvalidSessionIdException, TimeoutException
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support import expected_conditions
     from selenium.webdriver.support.ui import WebDriverWait
     from seleniumwire import webdriver
+    import seleniumwire.undetected_chromedriver as sw_uc
     from seleniumwire.utils import decode
     from webdriver_manager.chrome import ChromeDriverManager
     from webdriver_manager.firefox import GeckoDriverManager
@@ -89,29 +91,32 @@ class LidlPlusApi:
         return self._login_url
 
     def _init_chrome(self, headless=True):
+        import ssl
+        ssl._create_default_https_context = ssl._create_unverified_context  # needed for uc driver download
         user_agent = UserAgent(self._OS.lower()).Random()
         logging.getLogger("WDM").setLevel(logging.NOTSET)
-        options = webdriver.ChromeOptions()
+        options = sw_uc.ChromeOptions()
         if headless:
-            options.add_argument("headless")
+            options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--ignore-certificate-errors")  # trust seleniumwire proxy cert
         options.add_experimental_option("mobileEmulation", {"userAgent": user_agent})
-        for chrome_type in [ChromeType.GOOGLE, ChromeType.MSEDGE, ChromeType.CHROMIUM]:
-            try:
-                service = Service(ChromeDriverManager(chrome_type=chrome_type).install())
-                return webdriver.Chrome(service=service, options=options)
-            except AttributeError:
-                continue
+        wire_options = {"verify_ssl": False}
+        try:
+            return sw_uc.Chrome(options=options, use_subprocess=True, seleniumwire_options=wire_options)
+        except Exception:
+            pass
         raise WebBrowserException("Unable to find a suitable Chrome driver")
 
     def _init_firefox(self, headless=True):
-        user_agent = UserAgent(self._OS.lower()).Random()
         logging.getLogger("WDM").setLevel(logging.NOTSET)
         options = webdriver.FirefoxOptions()
-        profile = webdriver.FirefoxProfile()
-        profile.set_preference("general.useragent.override", user_agent)
-        return webdriver.Firefox(
-            options=options,
-        )
+        if headless:
+            options.add_argument("--headless")
+        options.accept_insecure_certs = True  # trust seleniumwire MITM proxy cert
+        wire_options = {"verify_ssl": False}
+        return webdriver.Firefox(options=options, seleniumwire_options=wire_options)
 
     def _get_browser(self, headless=True):
         try:
@@ -166,16 +171,75 @@ class LidlPlusApi:
         browser.find_element(By.TAG_NAME, "button").click()
 
     def _parse_code(self, browser, wait, accept_legal_terms=True):
+        # First try intercepted seleniumwire requests
         for request in reversed(browser.requests):
-            if f"{self._AUTH_API}/connect" not in request.url:
+            if "/connect/authorize/callback" not in request.url:
                 continue
-            location = request.response.headers.get("Location", "")
+            resp = request.response
+            location = resp.headers.get("Location", "") if resp else ""
+            logging.debug("callback req: %s status=%s location=%s", request.url[:80], resp.status_code if resp else "?", location[:120])
             if "legalTerms" in location:
                 self._accept_legal_terms(browser, wait, accept=accept_legal_terms)
                 return self._parse_code(browser, wait, False)
-            if code := re.findall("code=([0-9A-F]+)", location):
+            if code := re.findall("code=([0-9A-Za-z_-]+)", location):
                 return code[0]
+            # Code may also be a query param on the callback URL itself
+            if code := re.findall("code=([0-9A-Za-z_-]+)", request.url):
+                return code[0]
+        # Fallback: check browser's current URL (SPA may have navigated there)
+        try:
+            current_url = browser.current_url
+            if code := re.findall("code=([0-9A-Za-z_-]+)", current_url):
+                return code[0]
+        except Exception:
+            pass
         return ""
+
+    def _wait_for_auth_callback(self, browser, timeout=60, debug=False):
+        """Poll seleniumwire requests AND the live browser URL until auth callback appears."""
+        import time
+        deadline = time.time() + timeout
+        last_url = None
+        while time.time() < deadline:
+            # Check intercepted network requests
+            for req in reversed(list(browser.requests)):
+                if "/connect/authorize/callback" not in req.url:
+                    continue
+                # Code in the request URL itself
+                if "code=" in req.url:
+                    return
+                if not req.response:
+                    continue
+                # Code in the redirect Location header
+                location = req.response.headers.get("Location", "")
+                if "code=" in location or "legalTerms" in location:
+                    return
+            # Fallback: code may appear in browser URL (SPA redirect or custom scheme)
+            try:
+                current_url = browser.current_url
+                if current_url != last_url:
+                    if debug and last_url is not None:
+                        # Show the end of the URL (hash fragment) which is the meaningful part
+                        suffix = current_url[-100:] if len(current_url) > 100 else current_url
+                        print(f"[DEBUG] URL changed (tail): ...{suffix}")
+                    last_url = current_url
+                if "code=" in current_url and (
+                    "/connect/authorize/callback" in current_url
+                    or "com.lidlplus.app" in current_url
+                ):
+                    return
+            except Exception:
+                pass
+            time.sleep(0.5)
+        # On timeout dump captured requests to help diagnose
+        if debug:
+            print("[DEBUG] Timeout! All captured lidl.com requests:")
+            for req in browser.requests:
+                if "lidl" in req.url or "code=" in req.url:
+                    resp = req.response
+                    loc = resp.headers.get("Location", "") if resp else ""
+                    print(f"[DEBUG]   {req.method} {req.url[:120]} → {resp.status_code if resp else '?'} {loc[:80]}")
+        raise TimeoutException(f"Timed out after {timeout}s waiting for auth callback")
 
     def _click(self, browser, button, request=""):
         del browser.requests
@@ -202,38 +266,99 @@ class LidlPlusApi:
         if verify_mode not in ["phone", "email"]:
             raise ValueError(f'Unknown 2fa-mode "{verify_mode}" - Only "phone" or "email" supported')
         response = browser.wait_for_request(f"{self._AUTH_API}/Account/Login.*", 10).response
-        if "/connect/authorize/callback" not in response.headers.get("Location"):
-            element = wait.until(expected_conditions.visibility_of_element_located((By.CLASS_NAME, verify_mode)))
-            element.find_element(By.TAG_NAME, "button").click()
-            verify_code = verify_token_func() # type: ignore
-            browser.find_element(By.NAME, "VerificationCode").send_keys(verify_code)
-            self._click(browser, (By.CLASS_NAME, "role_next"))
+        if "/connect/authorize/callback" not in (response.headers.get("Location") or ""):
+            try:
+                element = wait.until(expected_conditions.visibility_of_element_located((By.CLASS_NAME, verify_mode)))
+                element.find_element(By.TAG_NAME, "button").click()
+                verify_code = verify_token_func() # type: ignore
+                browser.find_element(By.NAME, "VerificationCode").send_keys(verify_code)
+                self._click(browser, (By.CLASS_NAME, "role_next"))
+            except TimeoutException:
+                pass  # No 2FA prompt appeared, login proceeded without it
+            except InvalidSessionIdException:
+                raise WebBrowserException("Browser session lost — Chrome may have crashed or been closed.")
+
+    @staticmethod
+    def _check_rate_limit(browser):
+        """Raise LoginError if Lidl is rate-limiting the login page."""
+        body = browser.page_source
+        rate_limit_phrases = [
+            "Kapazität wurde überschritten",
+            "capacity has been exceeded",
+            "versuche es erneut",
+            "try again later",
+        ]
+        if any(phrase.lower() in body.lower() for phrase in rate_limit_phrases):
+            raise LoginError("Rate limited by Lidl — please wait a few minutes and try again.")
 
     def login(self, login, password, method, **kwargs):
         """Simulate app auth"""
-        browser = self._get_browser(headless=kwargs.get("headless", True))
-        browser.get(self._register_link)
-        wait = WebDriverWait(browser, 15)
-        wait.until(expected_conditions.visibility_of_element_located((By.XPATH, '//*[@id="duple-button-block"]/button[1]/span'))).click()
-        if method == "p": # Login with phone number
-            wait.until(expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, '[data-testid="button-login-switch"]'))).click()
-            wait.until(expected_conditions.element_to_be_clickable((By.NAME, "input-phone"))).send_keys(login)
-        else: # Login with email
-            wait.until(expected_conditions.element_to_be_clickable((By.NAME, "input-email"))).send_keys(login)
-        wait.until(expected_conditions.element_to_be_clickable((By.NAME, "Password"))).send_keys(password)
-        self._click(browser, (By.XPATH, '//*[@id="duple-button-block"]/button'))
+        debug = not kwargs.get("headless", True)
+        def dbg(msg):
+            if debug:
+                print(f"[DEBUG] {msg}")
 
-        self._check_login_error(browser)
-        self._check_2fa_auth(
-            browser,
-            wait,
-            kwargs.get("verify_mode", "phone"),
-            kwargs.get("verify_token_func"),
-        )
-        browser.wait_for_request(f"{self._AUTH_API}/connect.*")
-        code = self._parse_code(browser, wait, accept_legal_terms=kwargs.get("accept_legal_terms", True))
-        self._authorization_code(code)
-        browser.close()
+        browser = self._get_browser(headless=kwargs.get("headless", True))
+        try:
+            dbg("Opening register link...")
+            browser.get(self._register_link)
+            wait = WebDriverWait(browser, 15)
+            dbg(f"Page loaded: {browser.current_url}")
+            self._check_rate_limit(browser)
+            dbg("Clicking Anmelden button...")
+            wait.until(expected_conditions.visibility_of_element_located((By.XPATH, '//*[@id="duple-button-block"]/button[1]/span'))).click()
+            dbg(f"After Anmelden click: {browser.current_url}")
+            self._check_rate_limit(browser)
+            if debug:
+                print("")
+                print("  Browser is ready — fill in your email and password and click Anmelden.")
+                print("  If a rate-limit page appears, re-enter your password and click Anmelden again.")
+                print("  Waiting up to 120 seconds...")
+                print("")
+            else:
+                if method == "p": # Login with phone number
+                    wait.until(expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, 'button.btn-secondary'))).click()
+                    wait.until(expected_conditions.element_to_be_clickable((By.NAME, "input-phone"))).send_keys(login)
+                else: # Login with email
+                    wait.until(expected_conditions.element_to_be_clickable((By.NAME, "input-email"))).send_keys(login)
+                browser.execute_script("""
+                    ['Email','EmailPhone'].forEach(function(n){
+                        var f = document.querySelector('input[name="'+n+'"]');
+                        if(f) f.value = arguments[0];
+                    });
+                """, login)
+                visible_pw = wait.until(expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, 'input[type="password"]')))
+                visible_pw.send_keys(password)
+                browser.execute_script("""
+                    document.querySelectorAll('input[name="Password"]').forEach(function(f){
+                        f.value = arguments[0];
+                    });
+                """, password)
+                wait.until(expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, 'button.btn-primary'))).click()
+
+            if not debug:
+                self._check_login_error(browser)
+                self._check_2fa_auth(
+                    browser,
+                    wait,
+                    kwargs.get("verify_mode", "phone"),
+                    kwargs.get("verify_token_func"),
+                )
+
+            dbg("Waiting for auth callback...")
+            self._wait_for_auth_callback(browser, timeout=120 if debug else 60, debug=debug)
+            dbg("Parsing code...")
+            code = self._parse_code(browser, wait, accept_legal_terms=kwargs.get("accept_legal_terms", True))
+            dbg(f"Got code: {bool(code)}")
+            self._authorization_code(code)
+            dbg("Authorization complete!")
+        except InvalidSessionIdException:
+            raise WebBrowserException("Browser session lost — Chrome may have crashed or been closed.")
+        finally:
+            try:
+                browser.close()
+            except Exception:
+                pass
 
     def _default_headers(self):
         if (not self._token and self._refresh_token):
