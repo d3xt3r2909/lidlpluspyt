@@ -1,4 +1,14 @@
 {
+  "options": {
+    "step": {
+      "init": {
+        "title": "Lidl Plus Options",
+        "data": {
+          "update_interval_hours": "Data refresh interval (hours, 1–168)"
+        }
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
