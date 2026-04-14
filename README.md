@@ -21,7 +21,11 @@ This repo contains two tools:
 A custom HA component is included in `custom_components/lidl_plus/`. Install via HACS or copy the folder directly into your HA `custom_components/` directory.
 
 > [!IMPORTANT]
-> **HACS 2.x:** This repo sets **`hide_default_branch": true`** in `hacs.json` so HACS only offers **tagged releases** (not `main`, which always fails the version check). Install **1.2.2** or newer from the version list. Releases are created when a `v*` tag is pushed (GitHub Action).
+> **HACS 2.x:** This repo sets **`hide_default_branch": true`** in `hacs.json` so HACS only offers **tagged releases** (not `main`, which always fails the version check). Install **1.2.3** (or latest **1.2.x**) from the version list. Releases are created when a `v*` tag is pushed (GitHub Action).
+
+> [!CAUTION]
+> **Stuck on “Commit 34eb121 will be downloaded” / “version … can not be used”?**  
+> HACS cached an update that points at **`main`**. **Cancel** that dialog, then: **HACS → ⋮ → Custom repositories → remove `lidlpluspyt` → Update information → Add repository again** (`https://github.com/d3xt3r2909/lidlpluspyt`, category **Integration**). Open **Lidl Plus** from the list (**not** from “Pending update”), **⋮ → Redownload**, choose **1.2.3**, then restart HA. Do not confirm a download that shows a **7-character commit hash**.
 
 Features:
 - Coupon sensors (count, list, images)
