@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import hashlib
 import os
 import re
@@ -21,9 +22,25 @@ _OS = "iOS"
 _APP_VERSION = "13.0.0"
 _TIMEOUT = 30
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class LidlAuthError(Exception):
     """Raised when authentication fails (expired/invalid refresh token)."""
+
+
+def normalize_refresh_token(value: str) -> str:
+    """Strip whitespace, newlines, optional Bearer prefix / quotes from pasted tokens."""
+    s = (value or "").strip()
+    s = "".join(s.split())  # remove internal newlines / spaces
+    low = s.lower()
+    if low.startswith("bearer "):
+        s = s[7:].strip()
+        s = "".join(s.split())
+    if len(s) >= 2 and s[0] in "\"'" and s[-1] == s[0]:
+        s = s[1:-1].strip()
+        s = "".join(s.split())
+    return s
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +210,7 @@ class LidlApiClient:
     def __init__(self, language: str, country: str, refresh_token: str) -> None:
         self._language = language.lower()
         self._country = country.upper()
-        self._refresh_token = refresh_token
+        self._refresh_token = normalize_refresh_token(refresh_token)
         self._access_token = ""
         self._expires: datetime | None = None
 
@@ -234,12 +251,20 @@ class LidlApiClient:
                 data=payload,
                 timeout=_TIMEOUT,
             )
-            data = resp.json()
         except Exception as exc:
             raise LidlAuthError(f"Token request failed: {exc}") from exc
 
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise LidlAuthError(
+                f"Token renewal: expected JSON, got HTTP {resp.status_code}: {resp.text[:200]!r}"
+            ) from exc
+
         if "access_token" not in data:
-            raise LidlAuthError(f"Token renewal failed: {data.get('error', data)}")
+            err = data.get("error_description") or data.get("error") or data
+            _LOGGER.warning("Lidl /connect/token failed: %s", err)
+            raise LidlAuthError(f"Token renewal failed: {err}")
 
         self._access_token = data["access_token"]
         self._refresh_token = data["refresh_token"]

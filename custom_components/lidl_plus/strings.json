@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Lidl Plus Setup",
-        "description": "Get a refresh token by running:\n\n`./lidl-plus.sh auth --debug`\n\non your Mac. The token will be printed at the end.",
+        "description": "Run `./lidl-auth.sh --debug` on your Mac. Copy only the long hex line (not the dashed separator lines). Country and language here must match the CLI (default in script: DE + de).",
         "data": {
           "language": "Language code (e.g. de)",
           "country": "Country code (e.g. DE)",
@@ -19,7 +19,7 @@
       }
     },
     "error": {
-      "invalid_auth": "Invalid or expired token.",
+      "invalid_auth": "Invalid or expired token. Paste only the token line (no spaces/newlines). Match Country/Language to your auth (e.g. DE + de). Try the set_refresh_token service if the UI keeps rejecting a good token.",
       "cannot_connect": "Cannot connect to Lidl Plus servers."
     },
     "abort": {
@@ -46,7 +46,7 @@
     },
     "set_refresh_token": {
       "name": "Set Refresh Token",
-      "description": "Update the stored refresh token (called automatically by lidl-plus.sh)."
+      "description": "Validates with Lidl, stores rotated token, reloads integration. Use when reauth UI rejects a fresh token."
     }
   }
 }

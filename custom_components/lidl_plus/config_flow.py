@@ -64,9 +64,7 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
             description_placeholders={
-                "how_to": (
-                    "Run ./lidl-plus.sh auth --debug on your Mac to get a token."
-                )
+                "how_to": "Run ./lidl-auth.sh --debug; paste only the hex token line (DE + de must match).",
             },
         )
 
@@ -111,7 +109,7 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({vol.Required(CONF_REFRESH_TOKEN): str}),
             errors=errors,
             description_placeholders={
-                "how_to": "Run ./lidl-plus.sh auth --debug on your Mac to get a new token."
+                "how_to": "Or use service lidl_plus.set_refresh_token with the token from lidl-ha-sync.sh.",
             },
         )
 

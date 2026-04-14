@@ -26,6 +26,8 @@ Features:
 - Refresh token renewal from the HA UI
 - Service call to activate all coupons
 
+**If reauth says “Invalid or expired token” but the token is new:** paste only the long hex line (no dashed separators, no line breaks). **Country + language in HA must match** the auth CLI (`lidl-auth.sh` uses `DE` + `de` by default). Easiest fix: run `./lidl-ha-sync.sh` from your Mac — it validates the token and calls **`lidl_plus.set_refresh_token`**, which now works even when the integration is stuck in reauth (the service registers before validation).
+
 ### Quick Auth (`lidl-auth.sh`)
 
 One-command authentication that obtains a refresh token and optionally pushes it to Home Assistant.

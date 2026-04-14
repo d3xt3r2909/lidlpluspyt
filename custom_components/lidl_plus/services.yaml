@@ -6,12 +6,20 @@ activate_all_coupons:
 set_refresh_token:
   name: Set Refresh Token
   description: >
-    Update the stored refresh token. Call this from a script after running
-    lidl-ha-sync.sh to push a newly obtained token without touching the HA UI.
+    Validates the token with Lidl, saves the rotated refresh token, and reloads
+    the integration. Works even when the integration is in "needs reauth" state.
+    Prefer this or lidl-ha-sync.sh over pasting in the UI if you see false "invalid token".
   fields:
     refresh_token:
       name: Refresh Token
-      description: The new Lidl Plus refresh token.
+      description: The new Lidl Plus refresh token (paste the hex line only).
       required: true
       selector:
         text:
+    config_entry_id:
+      name: Config entry
+      description: Required only if you have more than one Lidl Plus account.
+      required: false
+      selector:
+        config_entry:
+          integration: lidl_plus
