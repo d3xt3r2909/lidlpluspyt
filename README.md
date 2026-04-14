@@ -21,7 +21,7 @@ This repo contains two tools:
 A custom HA component is included in `custom_components/lidl_plus/`. Install via HACS or copy the folder directly into your HA `custom_components/` directory.
 
 > [!IMPORTANT]
-> **HACS 2.x:** If you see *“The version … can not be used with HACS”* when installing from the default branch, HACS is comparing your commit hash to `manifest.json`’s semver — they never match. **Install a numbered release instead** (e.g. **1.2.0**): in HACS open the integration → **⋮** → pick a version from the list, or add the repo and select the latest **Release** (not “main”). This repo publishes GitHub Releases tagged `v1.x.x` matching `manifest.json`.
+> **HACS 2.x:** Installing from the default **main** branch fails (*version … can not be used*) because HACS compares the commit hash to `manifest.json` semver. **Pick a numbered version in HACS** (e.g. **1.2.1**) or the latest **Release**. Releases are created **automatically** when a `v*` tag is pushed (GitHub Action — no manual “Draft release” needed).
 
 Features:
 - Coupon sensors (count, list, images)
