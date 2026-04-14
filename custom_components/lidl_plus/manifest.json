@@ -1,7 +1,7 @@
 {
   "domain": "lidl_plus",
   "name": "Lidl Plus",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "documentation": "https://github.com/d3xt3r2909/lidlpluspyt",
   "issue_tracker": "https://github.com/d3xt3r2909/lidlpluspyt/issues",
   "requirements": ["requests>=2.28.0"],
