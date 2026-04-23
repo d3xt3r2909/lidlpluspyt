@@ -267,8 +267,16 @@ class LidlApiClient:
             raise LidlAuthError(f"Token renewal failed: {err}")
 
         self._access_token = data["access_token"]
-        self._refresh_token = data["refresh_token"]
-        self._expires = datetime.utcnow() + timedelta(seconds=data["expires_in"] - 60)
+        # Lidl usually rotates refresh_token + expires_in; if omitted, keep prior token / sane TTL.
+        new_rt = data.get("refresh_token")
+        if isinstance(new_rt, str) and new_rt.strip():
+            self._refresh_token = new_rt.strip()
+        try:
+            expires_in = int(data.get("expires_in", 3600))
+        except (TypeError, ValueError):
+            expires_in = 3600
+        ttl = max(120, expires_in - 60)
+        self._expires = datetime.utcnow() + timedelta(seconds=ttl)
 
     @property
     def refresh_token(self) -> str:
@@ -281,6 +289,10 @@ class LidlApiClient:
             self._renew()
             return True
         except LidlAuthError:
+            return False
+        except Exception as exc:  # noqa: BLE001
+            # Avoid bubbling KeyError/TypeError from odd token payloads as "cannot connect" in config flow.
+            _LOGGER.warning("Lidl token validate failed: %s", exc)
             return False
 
     # ------------------------------------------------------------------

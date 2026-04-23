@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.data_entry_flow import AbortFlow, FlowResult
 
 from .const import (
     CONF_ACTIVATION_DAY,
@@ -50,6 +50,8 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
             except LidlAuthError:
                 errors["base"] = "invalid_auth"
+            except AbortFlow:
+                raise
             except Exception:  # noqa: BLE001
                 errors["base"] = "cannot_connect"
 
@@ -101,6 +103,8 @@ class LidlPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_auth"
             except LidlAuthError:
                 errors["base"] = "invalid_auth"
+            except AbortFlow:
+                raise
             except Exception:  # noqa: BLE001
                 errors["base"] = "cannot_connect"
 
