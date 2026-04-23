@@ -72,9 +72,11 @@ HA_TOKEN=your_long_lived_ha_token
 With `LIDL_REFRESH_TOKEN` in `.env` (optional: `LIDL_LANGUAGE`, `LIDL_COUNTRY`; default `de` / `DE`):
 
 ```bash
+./test_lidl_token_and_coupons.sh                   # same (wrapper in repo root)
 ./scripts/test_lidl_token_and_coupons.sh           # 1) verify token via API  2) activate all coupons
 ./scripts/test_lidl_token_and_coupons.sh --verify-only   # token check only
 ```
+Use **`./`** at the start (relative to the repo). **`/scripts/...`** is wrong (absolute path from disk root).
 
 > [!TIP]
 > When using `--debug`, Firefox opens and shows the Lidl login form. Fill in your credentials and click **Anmelden**. If a rate-limit page appears ("Die Kapazität wurde überschritten"), re-enter your password and click Anmelden again. The refresh token is captured automatically and saved to `.env`.
