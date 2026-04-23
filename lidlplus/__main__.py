@@ -160,16 +160,32 @@ def activate_coupons(args):
     if not args.get("all"):
         print(json.dumps(coupons, indent=4))
         return
+    sections = coupons.get("sections") or []
+    if isinstance(sections, dict):
+        sections = list(sections.values())
+
     i = 0
-    for section in coupons.get("sections", {}):
-        for coupon in section.get("promotions", {}):
-            if coupon["isActivated"]:
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        promos = section.get("promotions") or section.get("coupons") or []
+        if isinstance(promos, dict):
+            promos = list(promos.values())
+        for coupon in promos:
+            if not isinstance(coupon, dict):
                 continue
-            if datetime.fromisoformat(coupon["validity"]["start"]) > datetime.now(timezone.utc):
+            if coupon.get("isActivated"):
                 continue
-            if datetime.fromisoformat(coupon["validity"]["end"]) < datetime.now(timezone.utc):
+            validity = coupon.get("validity") or {}
+            start = validity.get("start")
+            end = validity.get("end")
+            if not start or not end:
                 continue
-            print("activating coupon: ", coupon["title"])
+            if datetime.fromisoformat(start.replace("Z", "+00:00")) > datetime.now(timezone.utc):
+                continue
+            if datetime.fromisoformat(end.replace("Z", "+00:00")) < datetime.now(timezone.utc):
+                continue
+            print("activating coupon: ", coupon.get("title", coupon.get("id")))
             lidl_plus.activate_coupon(coupon["id"])
             i += 1
     print(f"Activated {i} coupons")
