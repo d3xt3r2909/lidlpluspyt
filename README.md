@@ -67,6 +67,15 @@ HA_TOKEN=your_long_lived_ha_token
 | `-u`, `--user` | Override email from `.env` |
 | `-p`, `--password` | Override password from `.env` |
 
+### CLI test before Home Assistant
+
+With `LIDL_REFRESH_TOKEN` in `.env` (optional: `LIDL_LANGUAGE`, `LIDL_COUNTRY`; default `de` / `DE`):
+
+```bash
+./scripts/test_lidl_token_and_coupons.sh           # 1) verify token via API  2) activate all coupons
+./scripts/test_lidl_token_and_coupons.sh --verify-only   # token check only
+```
+
 > [!TIP]
 > When using `--debug`, Firefox opens and shows the Lidl login form. Fill in your credentials and click **Anmelden**. If a rate-limit page appears ("Die Kapazität wurde überschritten"), re-enter your password and click Anmelden again. The refresh token is captured automatically and saved to `.env`.
 
