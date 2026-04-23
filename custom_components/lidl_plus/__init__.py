@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.components.persistent_notification import async_create as pn_async_create
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -54,7 +55,8 @@ def _register_set_refresh_token_service(hass: HomeAssistant) -> None:
             valid = await hass.async_add_executor_job(client.validate)
         except LidlAuthError as exc:
             _LOGGER.error("lidl_plus.set_refresh_token: %s", exc)
-            hass.components.persistent_notification.async_create(
+            pn_async_create(
+                hass,
                 str(exc),
                 title="Lidl Plus — token rejected",
                 notification_id="lidl_plus_token_invalid",
@@ -62,7 +64,8 @@ def _register_set_refresh_token_service(hass: HomeAssistant) -> None:
             return
         if not valid:
             _LOGGER.error("lidl_plus.set_refresh_token: Lidl rejected the token")
-            hass.components.persistent_notification.async_create(
+            pn_async_create(
+                hass,
                 "Lidl rejected the refresh token. Paste only the token line (no dashes). "
                 "Country + language in HA must match your auth CLI (e.g. DE + de). "
                 "Regenerate with `./lidl-auth.sh --debug`.",
@@ -111,7 +114,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         results = await hass.async_add_executor_job(client.activate_all_coupons)
         _LOGGER.info("Lidl Plus coupons activated: %s", results)
         await coordinator.async_request_refresh()
-        hass.components.persistent_notification.async_create(
+        pn_async_create(
+            hass,
             f"✅ Activated: {results.get('activated', 0)} "
             f"· Skipped: {results.get('skipped', 0)} "
             f"· Failed: {results.get('failed', 0)}",
