@@ -2,6 +2,8 @@
 """
 lidl plus command line tool
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -9,12 +11,29 @@ import sys
 from getpass import getpass
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Optional
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parent.parent))
 # pylint: disable=wrong-import-position
 from lidlplus import LidlPlusApi
 from lidlplus.exceptions import WebBrowserException, LoginError, LegalTermsException
+
+
+def _validity_as_utc(iso_str: str) -> Optional[datetime]:
+    """Parse Lidl validity start/end; return timezone-aware UTC or None."""
+    if not iso_str or not isinstance(iso_str, str):
+        return None
+    s = iso_str.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def get_arguments():
@@ -181,9 +200,12 @@ def activate_coupons(args):
             end = validity.get("end")
             if not start or not end:
                 continue
-            if datetime.fromisoformat(start.replace("Z", "+00:00")) > datetime.now(timezone.utc):
+            now = datetime.now(timezone.utc)
+            start_dt = _validity_as_utc(start)
+            end_dt = _validity_as_utc(end)
+            if start_dt is None or end_dt is None:
                 continue
-            if datetime.fromisoformat(end.replace("Z", "+00:00")) < datetime.now(timezone.utc):
+            if start_dt > now or end_dt < now:
                 continue
             print("activating coupon: ", coupon.get("title", coupon.get("id")))
             lidl_plus.activate_coupon(coupon["id"])
